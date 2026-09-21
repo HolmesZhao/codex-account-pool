@@ -1,0 +1,10 @@
+node_modules/
+apps/web/dist/
+data/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+.env
+test-results/
+playwright-report/
+*.tsbuildinfo

@@ -1,0 +1,9 @@
+{
+  "email": "lin@example.com",
+  "auth_mode": "chatgpt",
+  "tokens": {
+    "access_token": "e2e-access-token",
+    "refresh_token": "",
+    "id_token": "e2e-id-token"
+  }
+}

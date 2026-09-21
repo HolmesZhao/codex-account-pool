@@ -1,0 +1,24 @@
+{
+  "name": "codex-pool-helper",
+  "version": "0.1.0",
+  "description": "Safely switch and reconcile AT-only Codex credentials from a standalone account pool.",
+  "author": {
+    "name": "Codex Account Pool"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Codex Pool Helper",
+    "shortDescription": "Use managed Codex accounts safely.",
+    "longDescription": "Lists account-pool access and quota, switches to AT-only credentials, reconciles generations, and safely restores local auth.json state.",
+    "developerName": "Codex Account Pool",
+    "category": "Productivity",
+    "capabilities": ["Interactive", "Write"],
+    "defaultPrompt": [
+      "列出我可以使用的 Codex 号池账号。",
+      "查看 Codex 账号额度。",
+      "切换到指定的号池账号。",
+      "协调本地 AT-only 凭证。",
+      "回滚上一次账号切换。"
+    ]
+  }
+}

@@ -1,0 +1,16 @@
+import { useEffect, useState } from "react";
+import { ChevronRight, Plus } from "lucide-react";
+import { api } from "../../lib/api";
+import type { Account, Pool } from "../../lib/types";
+import { PoolEditor } from "./PoolEditor";
+
+export function PoolsPage() {
+  const [pools, setPools] = useState<Pool[]>([]); const [accounts, setAccounts] = useState<Account[]>([]); const [selectedId, setSelectedId] = useState<string | null>(null); const [mobileEditor, setMobileEditor] = useState(false); const [isNarrow, setIsNarrow] = useState(() => window.matchMedia?.("(max-width: 1100px)").matches || false);
+  useEffect(() => { Promise.all([api.get<Pool[]>("/api/codex/pools"), api.get<Account[]>("/api/codex/accounts")]).then(([nextPools, nextAccounts]) => { setPools(nextPools); setAccounts(nextAccounts); }); }, []);
+  useEffect(() => { const query = window.matchMedia?.("(max-width: 1100px)"); if (!query) return; const update = () => setIsNarrow(query.matches); query.addEventListener?.("change", update); return () => query.removeEventListener?.("change", update); }, []);
+  const selected = pools.find((pool) => pool.id === selectedId) || null;
+  async function save(pool: Pool) { const next = pool.id.startsWith("new-") ? await api.post<Pool>("/api/codex/pools", { ...pool, id: undefined }) : await api.put<Pool>(`/api/codex/pools/${pool.id}`, pool); setPools((items) => [next, ...items.filter((item) => item.id !== pool.id && item.id !== next.id)]); setSelectedId(next.id); }
+  async function remove(pool: Pool) { if (!window.confirm(`确认删除号池“${pool.name}”？`)) return; await api.delete(`/api/codex/pools/${pool.id}`); setPools((items) => items.filter((item) => item.id !== pool.id)); setSelectedId(null); }
+  function createPool() { const draft: Pool = { id: `new-${Date.now()}`, name: "新号池", description: "", enabled: true, accountIds: [], subjects: [] }; setPools((items) => [draft, ...items]); setSelectedId(draft.id); setMobileEditor(true); }
+  return <section className="page pools-page"><header className="page-header"><div><h1>号池管理</h1><p>组织账号并控制用户与角色的访问范围。</p></div><button className="button primary" onClick={createPool}><Plus size={16} />新建号池</button></header><div className="pool-workspace"><div className="pool-list"><div className="pool-list-head"><span>号池</span><span>{pools.length} 个</span></div>{pools.map((pool) => <button key={pool.id} aria-label={`选择 ${pool.name}`} className={selectedId === pool.id ? "pool-row selected" : "pool-row"} onClick={() => { setSelectedId(pool.id); setMobileEditor(true); }}><span><strong>{pool.name}</strong><small>{pool.description || "暂无说明"}</small></span><span className="pool-stats"><b>{pool.accountIds.length}</b><small>账号</small></span><span className={`status-text ${pool.enabled ? "success" : "warning"}`}><i />{pool.enabled ? "启用" : "停用"}</span><ChevronRight size={17} /></button>)}{!pools.length && <div className="table-empty">还没有号池。</div>}</div><div className="pool-editor-column">{selected ? <PoolEditor pool={selected} accounts={accounts} onSave={save} onDelete={remove} /> : <div className="editor-empty">选择左侧号池以查看配置</div>}</div></div>{isNarrow && selected && mobileEditor && <div className="mobile-pool-editor"><PoolEditor pool={selected} accounts={accounts} onSave={save} onDelete={remove} onClose={() => setMobileEditor(false)} /></div>}</section>;
+}

@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$PLUGIN_ROOT/scripts/codex-pool-helper.mjs\" hook --json",
+            "commandWindows": "node \"%PLUGIN_ROOT%\\scripts\\codex-pool-helper.mjs\" hook --json",
+            "timeout": 4
+          }
+        ]
+      }
+    ]
+  }
+}
