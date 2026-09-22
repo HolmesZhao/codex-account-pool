@@ -3,8 +3,8 @@ import { Download, KeyRound, RefreshCw, Trash2, X } from "lucide-react";
 import type { Account, Pool, QuotaWindow } from "../../lib/types";
 import { credentialLabel, formatDate, planLabel, statusTone } from "./account-format";
 
-interface Props { account: Account; pools: Pool[]; returnFocus?: HTMLElement | null; onClose: () => void; onRefresh: () => void; onDownload: () => void; onCheck: () => Promise<void>; onSave: (patch: Pick<Account, "alias" | "enabled">) => Promise<void>; onDelete: () => void }
-export function AccountDetailDrawer({ account, pools, returnFocus, onClose, onRefresh, onDownload, onCheck, onSave, onDelete }: Props) {
+interface Props { account: Account; pools: Pool[]; returnFocus?: HTMLElement | null; onClose: () => void; onRefresh: () => void; onDownload: () => void; onCheck: () => Promise<void>; onMaintain?: (rotate: boolean) => Promise<void>; onSave: (patch: Pick<Account, "alias" | "enabled">) => Promise<void>; onDelete: () => void }
+export function AccountDetailDrawer({ account, pools, returnFocus, onClose, onRefresh, onDownload, onCheck, onSave, onDelete, onMaintain }: Props) {
   const panel = useRef<HTMLElement>(null);
   const [alias, setAlias] = useState(account.alias);
   const [enabled, setEnabled] = useState(account.enabled);
@@ -13,11 +13,18 @@ export function AccountDetailDrawer({ account, pools, returnFocus, onClose, onRe
   const fiveHour = quotaWindow(account, "fiveHour");
   const weekly = quotaWindow(account, "weekly");
   useEffect(() => { panel.current?.focus(); return () => returnFocus?.focus(); }, [returnFocus]);
+  async function maintain(rotate: boolean) {
+    setSaving(true); setNotice("");
+    try { await onMaintain?.(rotate); setNotice("维护检查完成，请查看续期状态。"); }
+    catch (error) { setNotice(error instanceof Error ? error.message : "维护失败"); }
+    finally { setSaving(false); }
+  }
   return <div className="drawer-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
     <section ref={panel} tabIndex={-1} className="account-drawer" role="dialog" aria-modal="true" aria-label={`${account.email} 账号详情`}>
       <header className="drawer-head"><div><span className="drawer-kicker">账号详情</span><h2>{account.email}</h2><p>{account.alias || "未设置别名"}</p></div><button className="icon-button" aria-label="关闭详情" onClick={onClose}><X /></button></header>
       <div className="drawer-body">
         <DetailSection title="登录与凭证"><div className="detail-grid"><Info label="账户类型" value={planLabel(account.usage?.planType)} /><Info label="凭证模式" value={credentialLabel(account.credentialMode, account.status)} tone={statusTone(account.status)} /><Info label="凭证代次" value={`Generation ${account.generation}`} /><Info label="账号状态" value={account.enabled ? "已启用" : "已停用"} /><Info label="最近更新" value={formatDate(account.updatedAt)} /></div><div className="inline-actions"><button className="button" onClick={onDownload}><Download size={15} />下载 AT-only</button><button className="button" onClick={async () => { setNotice(""); try { await onCheck(); setNotice("凭证解密与摘要检查通过"); } catch { setNotice("凭证检查失败，请重新登录"); } }}><KeyRound size={15} />检查凭证</button><button className="button" onClick={onRefresh}><RefreshCw size={15} />刷新额度</button></div>{notice && <p className="notice" role="status">{notice}</p>}</DetailSection>
+        {account.maintenance && <DetailSection title="自动续期"><div className="detail-grid"><Info label="续期状态" value={renewalLabel(account.maintenance.refreshStatus)} /><Info label="AT 有效期" value={formatDate(account.maintenance.tokenExpiresAt)} /><Info label="最近续期" value={formatDate(account.maintenance.lastRenewedAt)} /><Info label="下次轮换" value={formatDate(account.maintenance.nextRotationAt)} /><Info label="下次重试门槛" value={formatDate(account.maintenance.nextRetryAt)} /></div>{account.maintenance.lastError && <p className="notice warning">{account.maintenance.lastError}</p>}{onMaintain && <div className="inline-actions"><button className="button" disabled={saving} onClick={() => maintain(false)}>检查续期</button><button className="button" disabled={saving || !account.maintenance.managed} onClick={() => maintain(true)}>立即轮换凭证</button></div>}</DetailSection>}
         <DetailSection title="额度"><div className="drawer-quota">{fiveHour && <QuotaDetail label="5 小时" window={fiveHour} />}{weekly && <QuotaDetail label="每周" window={weekly} />}{!fiveHour && !weekly && <span className="cell-muted">暂无额度窗口</span>}</div>{account.usage?.stale && <p className="notice warning">额度数据已过期，当前显示最后一次成功结果。</p>}</DetailSection>
         <DetailSection title="使用情况"><div className="detail-grid"><Info label="最近采集" value={formatDate(account.usage?.collectedAt)} /><Info label="当前号池" value={pools.find((pool) => pool.accountIds.includes(account.id))?.name || "未分配"} /></div></DetailSection>
         <DetailSection title="账号设置"><label className="field">账号别名<input value={alias} onChange={(event) => setAlias(event.target.value)} /></label><label className="toggle-row"><span><strong>启用账号</strong><small>停用后用户无法选择或下载该账号。</small></span><input type="checkbox" checked={enabled} onChange={(event) => setEnabled(event.target.checked)} /></label></DetailSection>
@@ -30,3 +37,5 @@ function DetailSection({ title, children }: { title: string; children: ReactNode
 function Info({ label, value, tone }: { label: string; value: string; tone?: string }) { return <div className="info-pair"><span>{label}</span><strong className={tone}>{value}</strong></div>; }
 function quotaWindow(account: Account, key: "fiveHour" | "weekly") { const usage = account.usage; if (!usage) return null; if (key in usage) return usage[key] || null; return key === "fiveHour" ? usage.primary || null : usage.secondary || null; }
 function QuotaDetail({ label, window }: { label: string; window: QuotaWindow }) { const remaining = Math.round(window.remainingPercent ?? (100 - window.usedPercent)); return <div><div className="quota-detail-head"><span>{label}</span><strong>{remaining}% 可用</strong></div><span className="quota-track large"><i style={{ width: `${remaining}%` }} /></span><small>{Math.round(window.usedPercent)}% 已用 · {formatDate(window.resetsAt)} 重置</small></div>; }
+
+function renewalLabel(status: string) { return ({ pending: "等待首次托管", healthy: "自动续期正常", manual: "无 RT，需手动登录", retrying: "等待重试", awaiting_client_reconcile: "等待客户端协调", refresh_chain_lost: "刷新链丢失", needs_reauth: "需要重新登录", quarantined: "凭证需人工检查" } as Record<string, string>)[status] || status; }

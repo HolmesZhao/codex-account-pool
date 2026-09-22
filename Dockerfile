@@ -28,6 +28,7 @@ USER node
 ENV NODE_ENV=production \
     CODEX_POOL_HOST=0.0.0.0 \
     CODEX_POOL_PORT=4317 \
+    CODEX_POOL_MAINTENANCE_DISABLED=0 \
     CODEX_POOL_DATABASE_URL=/data/codex-pool.sqlite \
     CODEX_POOL_AUTH_DATABASE_URL=/data/codex-pool-auth.sqlite \
     CODEX_POOL_CODEX_COMMAND=codex

@@ -3,7 +3,7 @@ import { pathToFileURL } from "node:url";
 import { loadHelperConfig } from "./lib/helper-config.mjs";
 import { requestPool } from "./lib/http-client.mjs";
 import { login } from "./lib/login-credentials.mjs";
-import { readState, restoreBackup, switchAccount } from "./lib/switcher.mjs";
+import { readState, restoreBackup, switchAccount, reconcileAccount } from "./lib/switcher.mjs";
 import { safeDiagnostic } from "./lib/diagnostics.mjs";
 
 export async function runHelper(argv, io = { env: process.env, stdout: process.stdout, stderr: process.stderr }) {
@@ -16,9 +16,10 @@ export async function runHelper(argv, io = { env: process.env, stdout: process.s
     if (command === "switch" || command === "refresh") return switchAccount(config, required(args[1]));
     if (command === "rollback" || command === "release") return restoreBackup(config);
     if (command === "status") return { ...(await readState(config)), authPath: config.authPath, serverUrl: config.serverUrl };
-    if (command === "coordinate") { const state = await readState(config); return state.managed && state.accountId ? switchAccount(config, state.accountId) : { coordinated: false, reason: "not-managed" }; }
+    if (command === "reconcile") return reconcileAccount(config, required(args[1]));
+    if (command === "coordinate") { const state = await readState(config); return state.managed && state.accountId ? reconcileAccount(config, state.accountId) : { coordinated: false, reason: "not-managed" }; }
     if (command === "hook") {
-      try { const state = await readState(config); if (state.managed && state.accountId) await switchAccount(config, state.accountId); else await requestPool(config, "/api/codex/accounts", { timeoutMs: 2_500 }); return { continue: true, coordinated: Boolean(state.managed) }; }
+      try { const state = await readState(config); if (state.managed && state.accountId) await reconcileAccount(config, state.accountId); else await requestPool(config, "/api/codex/accounts", { timeoutMs: 2_500 }); return { continue: true, coordinated: Boolean(state.managed) }; }
       catch (error) { return { continue: true, coordinated: false, diagnostic: safeDiagnostic(error) }; }
     }
     throw Object.assign(new Error(`未知命令: ${command}`), { code: "CODEX_POOL_COMMAND_UNKNOWN" });

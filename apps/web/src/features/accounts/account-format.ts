@@ -4,7 +4,7 @@ export function formatDate(value?: string | null) {
 }
 export function credentialLabel(mode: string, status: string) {
   if (status === "needs_reauth") return "需要重新登录";
-  return mode === "at-only" ? "AT-only 托管" : "Legacy 托管";
+  return mode === "managed" ? "服务端自动续期" : mode === "at-only" ? "仅 AT（无 RT）" : "待建立服务端托管";
 }
 export function statusTone(status: string) { return status === "ready" ? "success" : status === "needs_reauth" ? "warning" : "danger"; }
 export function planLabel(value?: string | null) {

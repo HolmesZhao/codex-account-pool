@@ -267,3 +267,22 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 @keyframes sheet-in { from { transform: translateY(22px); opacity: .55; } }
 @keyframes slide-in { from { transform: translateX(-18px); opacity: .4; } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; } }
+
+.proxy-settings-panel { padding: 20px; margin: 16px 0; border: 1px solid var(--border, #e5e7eb); border-radius: 12px; background: var(--surface, #fff); }
+.proxy-settings-panel h2 { margin: 0 0 8px; font-size: 17px; }
+.proxy-settings-panel p { font-size: 13px; color: var(--text-secondary, #64748b); overflow-wrap: anywhere; }
+.proxy-toggle { display: flex; gap: 8px; align-items: center; margin: 16px 0; }
+.proxy-address { display: grid; gap: 8px; max-width: 560px; font-size: 14px; }
+.proxy-address input { width: 100%; min-width: 0; box-sizing: border-box; padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 8px; }
+.proxy-settings-panel [role="alert"] { color: #b91c1c; margin: 12px 0; }
+.proxy-settings-panel [role="status"] { margin: 12px 0; }
+.create-user-panel { margin: 20px 0; }
+.admin-user-form { margin-top: 16px; padding: 20px; border: 1px solid #e5e7eb; border-radius: 12px; display: grid; gap: 14px; }
+.admin-user-form label { display: grid; gap: 6px; font-size: 14px; }
+.admin-user-form input, .admin-user-form select { width: 100%; min-width: 0; box-sizing: border-box; padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 8px; }
+.admin-user-form p { margin: 0; font-size: 13px; }
+.admin-user-form button { justify-self: start; }
+@media (max-width: 760px) {
+  .authorization-page .table-frame { overflow-x: auto; }
+  .authorization-page .table-toolbar { flex-wrap: wrap; }
+}

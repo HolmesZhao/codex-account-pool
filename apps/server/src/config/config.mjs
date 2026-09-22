@@ -14,6 +14,9 @@ export function resolveConfig(env = process.env) {
     credentialKey: env.CODEX_POOL_CREDENTIAL_KEY || "",
     admin: env.CODEX_POOL_ADMIN_USERNAME && env.CODEX_POOL_ADMIN_PASSWORD ? { username: env.CODEX_POOL_ADMIN_USERNAME, password: env.CODEX_POOL_ADMIN_PASSWORD } : null,
     codexCommand: env.CODEX_POOL_CODEX_COMMAND || "codex",
+    maintenanceInitialDelayMs: Number(env.CODEX_POOL_INITIAL_DELAY_MS || 30_000),
+    maintenanceIntervalMs: Number(env.CODEX_POOL_REFRESH_INTERVAL_MS || 3_600_000),
+    maintenanceConcurrency: Number(env.CODEX_POOL_MAINTENANCE_CONCURRENCY || 2),
     maintenanceDisabled: env.CODEX_POOL_MAINTENANCE_DISABLED === "1",
   };
 }

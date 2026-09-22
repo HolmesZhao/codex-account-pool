@@ -7,6 +7,7 @@ export class LoginFlowService {
   }
   async start(subject, { mode = "import", accountId = null } = {}) {
     await this.permissionService.require(subject, mode === "reauth" ? "codex_account:reauth" : "codex_account:import");
+    if (mode === "reauth") await this.accountService.get(subject, accountId, "codex_account:reauth");
     const handle = await this.runtime.beginLogin();
     const challenge = handle.publicState ? handle.publicState() : handle;
     const flow = { id: randomUUID(), ownerId: subject.user.id, mode, accountId, status: "pending", handle, ...challenge, expiresAt: challenge.expiresAt || new Date(this.now().getTime() + this.ttlMs).toISOString() };
@@ -17,6 +18,7 @@ export class LoginFlowService {
     const flow = this.#get(subject, id);
     if (flow.status === "cancelled") throw codexError("CODEX_LOGIN_FLOW_CANCELLED", "登录流程已取消", 410);
     if (Date.parse(flow.expiresAt) <= this.now().getTime()) { await flow.handle?.close?.(); throw codexError("CODEX_LOGIN_FLOW_EXPIRED", "登录流程已过期", 410); }
+    if (flow.status === "complete") return publicFlow(flow);
     const result = flow.handle?.poll ? await flow.handle.poll() : await this.runtime.pollLogin(flow);
     if (result.status !== "complete" && !result.auth && !result.authJson) return publicFlow({ ...flow, ...result });
     const auth = result.auth || JSON.parse(result.authJson);

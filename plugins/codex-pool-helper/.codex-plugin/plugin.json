@@ -1,6 +1,6 @@
 {
   "name": "codex-pool-helper",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Safely switch and reconcile AT-only Codex credentials from a standalone account pool.",
   "author": {
     "name": "Codex Account Pool"

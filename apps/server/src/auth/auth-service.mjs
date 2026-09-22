@@ -13,14 +13,22 @@ export class AuthService {
 
   async createUser({ username, password, displayName = username, role = "basic_user", enabled = true }) {
     const normalized = String(username || "").trim().toLowerCase();
+    if (typeof username !== "string" || normalized.length > 100 || /\s/.test(normalized)) throw codexError("CODEX_USER_INVALID", "用户名不能包含空格，且不能超过 100 个字符", 400);
+    if (typeof password !== "string" || password.length < 10 || password.length > 1024) throw codexError("CODEX_PASSWORD_INVALID", "密码长度应为 10–1024 个字符", 400);
+    if (typeof displayName !== "string" || displayName.trim().length > 100) throw codexError("CODEX_USER_INVALID", "显示名称不能超过 100 个字符", 400);
+    if (typeof enabled !== "boolean") throw codexError("CODEX_USER_INVALID", "用户状态无效", 400);
+    if (this.repository.findUserByUsername(normalized)) throw codexError("CODEX_USER_EXISTS", "用户名已存在", 409);
     if (!normalized) throw codexError("CODEX_USER_INVALID", "用户名不能为空", 400);
     if (!['basic_user', 'developer', 'expert', 'admin'].includes(role)) throw codexError("CODEX_ROLE_INVALID", "角色无效", 400);
+    const passwordHash = await hashPassword(password);
+    // Recheck after asynchronous password hashing so concurrent requests return 409.
+    if (this.repository.findUserByUsername(normalized)) throw codexError("CODEX_USER_EXISTS", "用户名已存在", 409);
     const record = this.repository.createUser({
       id: randomUUID(),
       username: normalized,
-      displayName: String(displayName || normalized).trim(),
+      displayName: displayName.trim() || normalized,
       role,
-      passwordHash: await hashPassword(password),
+      passwordHash,
       enabled,
       createdAt: this.now().toISOString(),
     });

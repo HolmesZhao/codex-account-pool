@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { Download, Plus, RefreshCw, Search } from "lucide-react";
 import { api } from "../../lib/api";
-import type { Account, Pool } from "../../lib/types";
+import type { Account, Pool, User } from "../../lib/types";
 import { AccountTable } from "./AccountTable";
 import { AccountDetailDrawer } from "./AccountDetailDrawer";
 import { ImportAccountDialog } from "./ImportAccountDialog";
 
 export function AccountsPage() {
   const [accounts, setAccounts] = useState<Account[]>([]); const [pools, setPools] = useState<Pool[]>([]); const [loading, setLoading] = useState(true); const [selected, setSelected] = useState<Account | null>(null); const [returnFocus, setReturnFocus] = useState<HTMLElement | null>(null); const [importing, setImporting] = useState(false); const [refreshingId, setRefreshingId] = useState(""); const [query, setQuery] = useState(""); const [notice, setNotice] = useState("");
+  const [admin, setAdmin] = useState(false);
+  useEffect(() => { api.get<User>("/api/auth/me").then((user) => setAdmin(user.role === "admin")).catch(() => {}); }, []);
   useEffect(() => { Promise.all([api.get<Account[]>("/api/codex/accounts"), api.get<Pool[]>("/api/codex/pools")]).then(([nextAccounts, nextPools]) => { setAccounts(nextAccounts); setPools(nextPools); }).finally(() => setLoading(false)); }, []);
   const filtered = useMemo(() => accounts.filter((account) => `${account.email} ${account.alias}`.toLowerCase().includes(query.toLowerCase())), [accounts, query]);
   async function refresh(account: Account) { setRefreshingId(account.id); setNotice(""); try { const usage = await api.post<Account["usage"]>(`/api/codex/accounts/${account.id}/quota`); setAccounts((items) => items.map((item) => item.id === account.id ? { ...item, usage } : item)); if (usage?.stale) setNotice(usage.error ? `额度刷新失败：${usage.error}` : "额度数据已过期，正在显示上次成功数据"); } catch { setNotice("暂时无法刷新，正在显示上次成功数据"); } finally { setRefreshingId(""); } }
@@ -17,7 +19,7 @@ export function AccountsPage() {
     <div className="table-toolbar"><label className="search-field"><Search size={16} /><input aria-label="搜索账号" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索邮箱或别名" /></label><span>{filtered.length} 个账号</span></div>
     {notice && <div className="notice warning" role="status">{notice}</div>}
     {loading ? <div className="table-loading">正在读取账号…</div> : <AccountTable accounts={filtered} pools={pools} refreshingId={refreshingId} onRefresh={refresh} onOpen={(account, trigger) => { setSelected(account); setReturnFocus(trigger); }} />}
-    {selected && <AccountDetailDrawer account={accounts.find((account) => account.id === selected.id) || selected} pools={pools} returnFocus={returnFocus} onClose={() => setSelected(null)} onRefresh={() => refresh(selected)} onDownload={() => download(selected)} onCheck={() => api.post(`/api/codex/accounts/${selected.id}/check-credential`)} onSave={async (patch) => { const updated = await api.put<Account>(`/api/codex/accounts/${selected.id}`, patch); setAccounts((items) => items.map((item) => item.id === updated.id ? { ...item, ...updated } : item)); setSelected(updated); }} onDelete={async () => { if (window.confirm(`确认删除 ${selected.email}？`)) { await api.delete(`/api/codex/accounts/${selected.id}`); setAccounts((items) => items.filter((item) => item.id !== selected.id)); setSelected(null); } }} />}
+    {selected && <AccountDetailDrawer account={accounts.find((account) => account.id === selected.id) || selected} pools={pools} returnFocus={returnFocus} onClose={() => setSelected(null)} onRefresh={() => refresh(selected)} onDownload={() => download(selected)} onMaintain={admin ? async (rotate) => { await api.post(`/api/codex/accounts/${selected.id}/credential-${rotate ? "rotate" : "maintenance"}`); setAccounts(await api.get<Account[]>("/api/codex/accounts")); } : undefined} onCheck={() => api.post(`/api/codex/accounts/${selected.id}/check-credential`)} onSave={async (patch) => { const updated = await api.put<Account>(`/api/codex/accounts/${selected.id}`, patch); setAccounts((items) => items.map((item) => item.id === updated.id ? { ...item, ...updated } : item)); setSelected(updated); }} onDelete={async () => { if (window.confirm(`确认删除 ${selected.email}？`)) { await api.delete(`/api/codex/accounts/${selected.id}`); setAccounts((items) => items.filter((item) => item.id !== selected.id)); setSelected(null); } }} />}
     {importing && <ImportAccountDialog onClose={() => setImporting(false)} onImported={(account) => { setAccounts((items) => [account, ...items.filter((item) => item.id !== account.id)]); setImporting(false); setNotice("账号导入成功"); }} />}
   </section>;
 }

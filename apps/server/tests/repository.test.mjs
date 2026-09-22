@@ -39,6 +39,15 @@ test("PostgreSQL adapter preserves the core repository contract", { skip: !proce
     await repository.setPoolSubjects(pool.id, [{ type: "role", id: "developer" }]);
     const revision = await repository.commitRevision({ accountId: account.id, expectedGeneration: 0, revision: { encrypted: "sealed", sha256: "sha", keyVersion: 1, mode: "legacy" } });
     assert.equal(revision.generation, 1);
+    const now = new Date(), expires = new Date(now.getTime()+300_000).toISOString();
+    assert.equal(await repository.acquireCredentialLease(account.id,"owner-a",expires,now.toISOString()),true);
+    assert.equal(await repository.acquireCredentialLease(account.id,"owner-b",expires,now.toISOString()),false);
+    await repository.saveMaintenance(account.id,{refreshStatus:"healthy"},{owner:"owner-a",generation:1,now:now.toISOString()});
+    const next = await repository.commitRevision({accountId:account.id,expectedGeneration:1,revision:{encrypted:"sealed-2",sha256:"sha2",keyVersion:1,mode:"managed"},leaseOwner:"owner-a",maintenance:{refreshStatus:"healthy",nextRotationAt:expires}});
+    assert.equal(next.generation,2);
+    assert.equal((await repository.getMaintenance(account.id)).nextRotationAt,expires);
+    await assert.rejects(repository.commitRevision({accountId:account.id,expectedGeneration:1,revision:{encrypted:"stale",sha256:"sha",keyVersion:1}}),{code:"CODEX_AUTH_REVISION_CONFLICT"});
+    await repository.releaseCredentialLease(account.id,"owner-a");
     assert.deepEqual(await repository.listAccessibleAccountIds({ userId: "nobody", roles: ["developer"] }), [account.id]);
   } finally {
     await repository.rawPool.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);

@@ -13,3 +13,18 @@ test("maintenance respects configured concurrency", async () => {
   await scheduler.runOnce();
   assert.equal(maximum, 2);
 });
+
+test("stop during an active scan does not restart the scheduler or schedule more accounts", async () => {
+  let callback, release; const calls=[]; let scheduled=0;
+  const scheduler=new MaintenanceScheduler({listAccountIds:async()=>['a','b'],maintain:async id=>{calls.push(id);if(id==='a'){await new Promise(resolve=>{release=resolve;});throw new Error('failure');}},concurrency:1,timers:{setTimeout(fn){callback=fn;scheduled++;return 1;},clearTimeout(){}}});
+  scheduler.start();const tick=callback();
+  while(!release) await new Promise(resolve=>setImmediate(resolve));
+  const stopped=scheduler.stop();release();await tick;await stopped;
+  assert.equal(scheduled,1);assert.deepEqual(calls,['a']);
+});
+
+
+test("an account failure does not abort the remaining scan",async()=>{
+ const calls=[]; const scheduler=new MaintenanceScheduler({listAccountIds:async()=>['a','b'],concurrency:1,maintain:async id=>{calls.push(id);if(id==='a')throw new Error('failure');}});
+ await scheduler.runOnce();assert.deepEqual(calls,['a','b']);
+});

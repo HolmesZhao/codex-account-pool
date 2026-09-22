@@ -101,9 +101,10 @@ export class SqliteCodexRepository {
   }
   listCredentialKeys() { return this.db.prepare("SELECT * FROM codex_credential_keys ORDER BY version").all().map((row) => ({ version: row.version, encryptedKey: row.encrypted_key, active: Boolean(row.active), createdAt: row.created_at })); }
 
-  commitRevision({ accountId, expectedGeneration, revision }) {
+  commitRevision({ accountId, expectedGeneration, revision, maintenance, leaseOwner, now = new Date().toISOString() }) {
     if (!this.inTransaction) this.db.exec("BEGIN IMMEDIATE");
     try {
+      if (leaseOwner && !this.db.prepare("SELECT 1 FROM codex_credential_leases WHERE account_id=? AND owner=? AND expires_at>?").get(accountId, leaseOwner, now)) throw codexError("CODEX_CREDENTIAL_LEASE_LOST", "凭证维护租约已失效", 409);
       const account = this.db.prepare("SELECT generation FROM codex_accounts WHERE id=?").get(accountId);
       if (!account || account.generation !== expectedGeneration) throw codexError("CODEX_AUTH_REVISION_CONFLICT", "凭证已被其他操作更新", 409);
       const generation = expectedGeneration + 1;
@@ -114,6 +115,7 @@ export class SqliteCodexRepository {
         .run(generation, revision.mode || "legacy", new Date().toISOString(), accountId);
       this.db.prepare(`DELETE FROM codex_auth_revisions WHERE account_id=? AND generation NOT IN
         (SELECT generation FROM codex_auth_revisions WHERE account_id=? ORDER BY generation DESC LIMIT 5)`).run(accountId, accountId);
+      if (maintenance) this.db.prepare("INSERT INTO codex_maintenance (account_id,payload) VALUES (?,?) ON CONFLICT(account_id) DO UPDATE SET payload=excluded.payload").run(accountId, JSON.stringify(maintenance));
       if (!this.inTransaction) this.db.exec("COMMIT");
       return { accountId, generation, ...revision };
     } catch (error) { if (!this.inTransaction) this.db.exec("ROLLBACK"); throw error; }
@@ -168,6 +170,18 @@ export class SqliteCodexRepository {
       .run(event.id || randomUUID(), event.actorId || "system", event.action, event.targetType, event.targetId || "", event.result || "success", JSON.stringify(event.details || {}), event.createdAt || new Date().toISOString());
   }
   listAudits({ limit = 100 } = {}) { return this.db.prepare("SELECT * FROM codex_operation_audit ORDER BY created_at DESC LIMIT ?").all(limit).map((row) => ({ id: row.id, actorId: row.actor_id, action: row.action, targetType: row.target_type, targetId: row.target_id, result: row.result, details: JSON.parse(row.details), createdAt: row.created_at })); }
+  getMaintenance(accountId) { const row = this.db.prepare("SELECT payload FROM codex_maintenance WHERE account_id=?").get(accountId); return row ? JSON.parse(row.payload) : null; }
+  saveMaintenance(accountId, payload, { owner, generation, now = new Date().toISOString() }) {
+    const result = this.db.prepare(`INSERT INTO codex_maintenance (account_id,payload)
+      SELECT ?,? WHERE EXISTS (SELECT 1 FROM codex_credential_leases l JOIN codex_accounts a ON a.id=l.account_id WHERE l.account_id=? AND l.owner=? AND l.expires_at>? AND a.generation=?)
+      ON CONFLICT(account_id) DO UPDATE SET payload=excluded.payload`).run(accountId, JSON.stringify(payload), accountId, owner, now, generation);
+    if (!result.changes) throw codexError("CODEX_AUTH_REVISION_CONFLICT", "凭证或租约已更新", 409);
+  }
+  acquireCredentialLease(accountId, owner, expiresAt, now) {
+    return Boolean(this.db.prepare(`INSERT INTO codex_credential_leases (account_id,owner,expires_at) VALUES (?,?,?)
+      ON CONFLICT(account_id) DO UPDATE SET owner=excluded.owner,expires_at=excluded.expires_at WHERE codex_credential_leases.expires_at<=?`).run(accountId, owner, expiresAt, now).changes);
+  }
+  releaseCredentialLease(accountId, owner) { this.db.prepare("DELETE FROM codex_credential_leases WHERE account_id=? AND owner=?").run(accountId, owner); }
   close() { this.db.close(); }
 }
 
@@ -237,14 +251,19 @@ export class PostgresCodexRepository {
   async saveCredentialKey(key) { await this.pool.query(`INSERT INTO ${this.schema}.codex_credential_keys (version,encrypted_key,active,created_at) VALUES ($1,$2,$3,$4) ON CONFLICT(version) DO UPDATE SET encrypted_key=EXCLUDED.encrypted_key,active=EXCLUDED.active`, [key.version, key.encryptedKey, Boolean(key.active), key.createdAt || new Date().toISOString()]); }
   async listCredentialKeys() { const { rows } = await this.pool.query(`SELECT * FROM ${this.schema}.codex_credential_keys ORDER BY version`); return rows.map((row) => ({ version: row.version, encryptedKey: row.encrypted_key, active: Boolean(row.active), createdAt: iso(row.created_at) })); }
 
-  async commitRevision({ accountId, expectedGeneration, revision }) {
+  async commitRevision({ accountId, expectedGeneration, revision, maintenance, leaseOwner, now = new Date().toISOString() }) {
     return this.#transaction(async (client) => {
+      if (leaseOwner) {
+        const lease = await client.query(`SELECT 1 FROM ${this.schema}.codex_credential_leases WHERE account_id=$1 AND owner=$2 AND expires_at>$3 FOR UPDATE`, [accountId, leaseOwner, now]);
+        if (!lease.rows.length) throw codexError("CODEX_CREDENTIAL_LEASE_LOST", "凭证维护租约已失效", 409);
+      }
       const { rows } = await client.query(`SELECT generation FROM ${this.schema}.codex_accounts WHERE id=$1 FOR UPDATE`, [accountId]);
       if (!rows[0] || rows[0].generation !== expectedGeneration) throw codexError("CODEX_AUTH_REVISION_CONFLICT", "凭证已被其他操作更新", 409);
       const generation = expectedGeneration + 1;
       await client.query(`INSERT INTO ${this.schema}.codex_auth_revisions (account_id,generation,encrypted,sha256,key_version,mode,created_at) VALUES ($1,$2,$3,$4,$5,$6,$7)`, [accountId, generation, revision.encrypted, revision.sha256, revision.keyVersion, revision.mode || "legacy", new Date().toISOString()]);
       await client.query(`UPDATE ${this.schema}.codex_accounts SET generation=$1,credential_mode=$2,updated_at=$3 WHERE id=$4`, [generation, revision.mode || "legacy", new Date().toISOString(), accountId]);
       await client.query(`DELETE FROM ${this.schema}.codex_auth_revisions WHERE account_id=$1 AND generation NOT IN (SELECT generation FROM ${this.schema}.codex_auth_revisions WHERE account_id=$1 ORDER BY generation DESC LIMIT 5)`, [accountId]);
+      if (maintenance) await client.query(`INSERT INTO ${this.schema}.codex_maintenance (account_id,payload) VALUES ($1,$2) ON CONFLICT(account_id) DO UPDATE SET payload=EXCLUDED.payload`, [accountId, maintenance]);
       return { accountId, generation, ...revision };
     });
   }
@@ -292,10 +311,27 @@ export class PostgresCodexRepository {
     catch (error) { await client.query("ROLLBACK"); throw error; }
     finally { client.release(); }
   }
+  async getMaintenance(accountId) { const { rows } = await this.pool.query(`SELECT payload FROM ${this.schema}.codex_maintenance WHERE account_id=$1`, [accountId]); return rows[0] ? json(rows[0].payload) : null; }
+  async saveMaintenance(accountId, payload, { owner, generation, now = new Date().toISOString() }) {
+    await this.#transaction(async client => {
+      const lease = await client.query(`SELECT 1 FROM ${this.schema}.codex_credential_leases WHERE account_id=$1 AND owner=$2 AND expires_at>$3 FOR UPDATE`, [accountId, owner, now]);
+      const account = await client.query(`SELECT generation FROM ${this.schema}.codex_accounts WHERE id=$1 FOR UPDATE`, [accountId]);
+      if (!lease.rows.length || account.rows[0]?.generation !== generation) throw codexError("CODEX_AUTH_REVISION_CONFLICT", "凭证或租约已更新", 409);
+      await client.query(`INSERT INTO ${this.schema}.codex_maintenance (account_id,payload) VALUES ($1,$2) ON CONFLICT(account_id) DO UPDATE SET payload=EXCLUDED.payload`, [accountId, payload]);
+    });
+  }
+  async acquireCredentialLease(accountId, owner, expiresAt, now) {
+    const { rowCount } = await this.pool.query(`INSERT INTO ${this.schema}.codex_credential_leases (account_id,owner,expires_at) VALUES ($1,$2,$3)
+      ON CONFLICT(account_id) DO UPDATE SET owner=EXCLUDED.owner,expires_at=EXCLUDED.expires_at WHERE ${this.schema}.codex_credential_leases.expires_at<=$4`, [accountId, owner, expiresAt, now]);
+    return Boolean(rowCount);
+  }
+  async releaseCredentialLease(accountId, owner) { await this.pool.query(`DELETE FROM ${this.schema}.codex_credential_leases WHERE account_id=$1 AND owner=$2`, [accountId, owner]); }
   async close() { await this.rawPool.end(); }
 }
 
 const SCHEMA_SQLITE = `
+CREATE TABLE IF NOT EXISTS codex_maintenance (account_id TEXT PRIMARY KEY REFERENCES codex_accounts(id) ON DELETE CASCADE,payload TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS codex_credential_leases (account_id TEXT PRIMARY KEY REFERENCES codex_accounts(id) ON DELETE CASCADE,owner TEXT NOT NULL,expires_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS codex_pools (id TEXT PRIMARY KEY,name TEXT NOT NULL,description TEXT NOT NULL DEFAULT '',enabled INTEGER NOT NULL DEFAULT 1,created_at TEXT NOT NULL,updated_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS codex_accounts (id TEXT PRIMARY KEY,email TEXT NOT NULL UNIQUE,alias TEXT NOT NULL DEFAULT '',enabled INTEGER NOT NULL DEFAULT 1,status TEXT NOT NULL,generation INTEGER NOT NULL DEFAULT 0,credential_mode TEXT NOT NULL DEFAULT 'legacy',created_at TEXT NOT NULL,updated_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS codex_pool_accounts (pool_id TEXT NOT NULL,account_id TEXT NOT NULL,PRIMARY KEY(pool_id,account_id),FOREIGN KEY(pool_id) REFERENCES codex_pools(id) ON DELETE CASCADE,FOREIGN KEY(account_id) REFERENCES codex_accounts(id) ON DELETE CASCADE);
@@ -311,6 +347,8 @@ CREATE TABLE IF NOT EXISTS codex_operation_audit (id TEXT PRIMARY KEY,actor_id T
 const SCHEMA_POSTGRES = `
 CREATE TABLE IF NOT EXISTS __SCHEMA__.codex_pools (id text PRIMARY KEY,name text NOT NULL,description text NOT NULL DEFAULT '',enabled boolean NOT NULL DEFAULT true,created_at timestamptz NOT NULL,updated_at timestamptz NOT NULL);
 CREATE TABLE IF NOT EXISTS __SCHEMA__.codex_accounts (id text PRIMARY KEY,email text UNIQUE NOT NULL,alias text NOT NULL DEFAULT '',enabled boolean NOT NULL DEFAULT true,status text NOT NULL,generation integer NOT NULL DEFAULT 0,credential_mode text NOT NULL DEFAULT 'legacy',created_at timestamptz NOT NULL,updated_at timestamptz NOT NULL);
+CREATE TABLE IF NOT EXISTS __SCHEMA__.codex_maintenance (account_id text PRIMARY KEY REFERENCES __SCHEMA__.codex_accounts(id) ON DELETE CASCADE,payload jsonb NOT NULL);
+CREATE TABLE IF NOT EXISTS __SCHEMA__.codex_credential_leases (account_id text PRIMARY KEY REFERENCES __SCHEMA__.codex_accounts(id) ON DELETE CASCADE,owner text NOT NULL,expires_at timestamptz NOT NULL);
 CREATE TABLE IF NOT EXISTS __SCHEMA__.codex_pool_accounts (pool_id text REFERENCES __SCHEMA__.codex_pools(id) ON DELETE CASCADE,account_id text REFERENCES __SCHEMA__.codex_accounts(id) ON DELETE CASCADE,PRIMARY KEY(pool_id,account_id));
 CREATE TABLE IF NOT EXISTS __SCHEMA__.codex_pool_subjects (pool_id text REFERENCES __SCHEMA__.codex_pools(id) ON DELETE CASCADE,subject_type text NOT NULL,subject_id text NOT NULL,PRIMARY KEY(pool_id,subject_type,subject_id));
 CREATE TABLE IF NOT EXISTS __SCHEMA__.codex_credential_keys (version integer PRIMARY KEY,encrypted_key text NOT NULL,active boolean NOT NULL,created_at timestamptz NOT NULL);

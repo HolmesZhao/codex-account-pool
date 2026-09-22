@@ -36,3 +36,42 @@ readline.createInterface({input:process.stdin}).on('line',(line)=>{ const m=JSON
   assert.equal(quota.planType, "pro");
   assert.equal(quota.ordinaryUsageAllowed, true);
 });
+
+test("login and quota processes receive current proxy settings and redact proxy credentials", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "codex-proxy-runtime-test-"));
+  const command = join(directory, "fake-codex");
+  await writeFile(command, `#!/usr/bin/env node
+require('node:readline').createInterface({input:process.stdin}).on('line',line=>{
+ const m=JSON.parse(line); if(m.id===undefined)return;
+ const proxy=process.env.HTTPS_PROXY;
+ const result=m.method==='account/login/start'?{userCode:proxy}:m.method==='account/rateLimits/read'?{rateLimits:{planType:proxy}}:{};
+ if(proxy.includes('secret')) process.stdout.write(JSON.stringify({id:m.id,error:{message:'Cannot reach '+proxy}})+'\\n');
+ else process.stdout.write(JSON.stringify({id:m.id,result})+'\\n');
+});`, { mode: 0o700 });
+  let proxy = "http://first.test:8080";
+  const runtime = new CodexRuntime({ command, getProxyEnvironment: () => ({ HTTPS_PROXY: proxy }), timeoutMs: 5000 });
+  t.after(async () => { await runtime.close(); await rm(directory, { recursive: true, force: true }); });
+  const handle = await runtime.beginLogin();
+  assert.equal(handle.publicState().userCode, proxy);
+  await handle.close();
+  proxy = "http://second.test:7890";
+  assert.equal((await runtime.readQuota({})).planType, proxy);
+  proxy = "";
+  assert.equal((await runtime.readQuota({})).planType, null);
+  proxy = "http://alice:secret@proxy.test:8080";
+  await assert.rejects(runtime.beginLogin(), (error) => !error.message.includes("secret") && !error.message.includes("alice") && error.message.includes("REDACTED"));
+});
+
+test("runtime explicitly refreshes and returns updated credentials even if quota lookup fails", async t=>{
+  const directory=await mkdtemp(join(tmpdir(),"codex-refresh-runtime-"));const command=join(directory,'fake-codex');
+  await writeFile(command,`#!/usr/bin/env node
+const fs=require('node:fs');require('node:readline').createInterface({input:process.stdin}).on('line',line=>{
+ const m=JSON.parse(line);if(m.id===undefined)return;
+ if(m.method==='account/read' && m.params.refreshToken){fs.writeFileSync(process.env.CODEX_HOME+'/auth.json',JSON.stringify({tokens:{access_token:'new-at',refresh_token:'new-rt'}}));}
+ const error=m.method==='account/rateLimits/read'?{message:'quota network failure'}:null;
+ process.stdout.write(JSON.stringify(error?{id:m.id,error}:{id:m.id,result:{account:{type:'chatgpt'}}})+'\\n');
+});`,{mode:0o700});
+  const runtime=new CodexRuntime({command});t.after(async()=>{await runtime.close();await rm(directory,{recursive:true,force:true});});
+  const result=await runtime.inspect({tokens:{access_token:'old-at',refresh_token:'old-rt'}},{refresh:true});
+  assert.equal(result.refreshed,true);assert.equal(result.error.message,'quota network failure');assert.equal(JSON.parse(result.updatedAuthJson).tokens.refresh_token,'new-rt');
+});

@@ -15,6 +15,8 @@ import { CredentialService } from "./domain/credential-service.mjs";
 import { QuotaService } from "./domain/quota-service.mjs";
 import { LoginFlowService } from "./domain/login-flow-service.mjs";
 import { MaintenanceScheduler } from "./domain/maintenance-scheduler.mjs";
+import { ProxySettings } from "./domain/proxy-settings.mjs";
+import { CredentialRenewal } from "./domain/credential-renewal.mjs";
 import { CodexRuntime } from "./runtime/codex-runtime.mjs";
 import { routeRequest } from "./api/router.mjs";
 import { errorBody, requestId } from "./api/http-utils.mjs";
@@ -33,17 +35,19 @@ export async function createCodexPoolServer(options = {}) {
   const authService = options.authService || new AuthService({ repository: authRepository, provenanceSecret: config.sessionSecret });
   if (config.admin && authService.listUsers().length === 0) await authService.createUser({ ...config.admin, role: "admin", displayName: "管理员" });
   const permissionService = new PermissionService();
-  const runtime = options.runtime || new CodexRuntime({ command: config.codexCommand });
   const vault = options.vault || new CodexCredentialVault(config.credentialKey);
+  const proxySettings = new ProxySettings({ repository: authRepository, vault });
+  const runtime = options.runtime || new CodexRuntime({ command: config.codexCommand, getProxyEnvironment: () => proxySettings.environment() });
+  const renewal = new CredentialRenewal({ repository, vault, runtime });
   const services = {
-    repository, authService, permissionService, runtime,
+    repository, authService, permissionService, runtime, proxySettings, renewal,
     pools: new PoolService({ repository, permissionService }),
-    accounts: new AccountService({ repository, permissionService, vault }),
-    credentials: new CredentialService({ repository, permissionService, vault }),
-    quota: new QuotaService({ repository, permissionService, runtime, vault }),
+    accounts: new AccountService({ repository, permissionService, vault, renewal }),
+    credentials: new CredentialService({ repository, permissionService, vault, renewal }),
+    quota: new QuotaService({ repository, permissionService, runtime, vault, renewal }),
   };
   services.loginFlows = new LoginFlowService({ repository, permissionService, runtime, accountService: services.accounts });
-  const scheduler = new MaintenanceScheduler({ listAccountIds: async () => (await repository.listAccounts()).map((account) => account.id), maintain: async (id) => services.quota.refresh(systemAdmin(), id) });
+  const scheduler = new MaintenanceScheduler({ listAccountIds: async () => (await repository.listAccounts()).map((account) => account.id), maintain: async (id) => services.quota.refresh(systemAdmin(), id, { maintenance: true }), initialDelayMs: config.maintenanceInitialDelayMs, intervalMs: config.maintenanceIntervalMs, concurrency: config.maintenanceConcurrency });
   if (!config.maintenanceDisabled) scheduler.start();
   const server = http.createServer(async (request, response) => {
     const id = requestId(request);
@@ -61,6 +65,7 @@ export async function createCodexPoolServer(options = {}) {
     server, services,
     async close() {
       await scheduler.stop();
+      await renewal.close();
       await runtime.close?.();
       if (server.listening) await new Promise((resolveClose, reject) => server.close((error) => error ? reject(error) : resolveClose()));
       await repository.close();

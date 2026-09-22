@@ -7,7 +7,7 @@ export async function switchAccount(config, accountId) {
   const auth = await requestPool(config, ticket.downloadUrl, { raw: true });
   if (!auth?.tokens?.access_token || auth.tokens.refresh_token) throw Object.assign(new Error("服务端未返回合法 AT-only 凭证"), { code: "CODEX_POOL_AT_ONLY_REQUIRED" });
   await mkdir(dirname(config.authPath), { recursive: true });
-  try { await access(config.authPath); await copyFile(config.authPath, `${config.authPath}.codex-pool-backup`); } catch {}
+  try { const previous = JSON.parse(await readFile(config.authPath, "utf8")); await atomicWrite(`${config.authPath}.codex-pool-backup`, { ...previous, tokens: { ...previous.tokens, refresh_token: "" } }); } catch {}
   await atomicWrite(config.authPath, auth);
   await atomicWrite(config.statePath, { managed: true, accountId, switchedAt: new Date().toISOString() });
   return { switched: true, accountId, generation: Number(ticket.generation || 0), restartRequired: true };
@@ -23,3 +23,12 @@ export async function restoreBackup(config) {
 
 export async function readState(config) { try { return JSON.parse(await readFile(config.statePath, "utf8")); } catch { return { managed: false }; } }
 async function atomicWrite(path, value) { const temporary = `${path}.${process.pid}.tmp`; await writeFile(temporary, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 }); await rename(temporary, path); await chmod(path, 0o600); }
+
+export async function reconcileAccount(config, accountId) {
+  let local;
+  try { local = JSON.parse(await readFile(config.authPath, "utf8")); } catch { return switchAccount(config, accountId); }
+  if (local.tokens?.refresh_token) {
+    await requestPool(config, `/api/codex/accounts/${encodeURIComponent(accountId)}/credential-reconcile`, { method: "POST", body: { auth: local } });
+  }
+  return switchAccount(config, accountId);
+}

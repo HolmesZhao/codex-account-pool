@@ -5,6 +5,7 @@ export class AuthRepository {
     this.db = new DatabaseSync(filename);
     this.db.exec(`
       PRAGMA foreign_keys = ON;
+      CREATE TABLE IF NOT EXISTS pool_settings (name TEXT PRIMARY KEY, value TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS pool_users (
         id TEXT PRIMARY KEY, username TEXT NOT NULL UNIQUE, display_name TEXT NOT NULL,
         role TEXT NOT NULL, password_hash TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 1,
@@ -59,6 +60,14 @@ export class AuthRepository {
 
   deleteSession(tokenDigest) {
     this.db.prepare("DELETE FROM pool_sessions WHERE token_digest = ?").run(tokenDigest);
+  }
+
+  getSetting(name) {
+    const row = this.db.prepare("SELECT value FROM pool_settings WHERE name = ?").get(name);
+    return row ? JSON.parse(row.value) : null;
+  }
+  saveSetting(name, value) {
+    this.db.prepare("INSERT INTO pool_settings (name, value) VALUES (?, ?) ON CONFLICT(name) DO UPDATE SET value = excluded.value").run(name, JSON.stringify(value));
   }
 
   close() { this.db.close(); }

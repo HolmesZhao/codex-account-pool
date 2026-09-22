@@ -4,6 +4,11 @@ import { json, raw, readJson } from "./http-utils.mjs";
 
 export async function routeCodex({ request, path, method, services }) {
   const subject = await createAuthContext(request, services.authService);
+  if (path === "/api/codex/settings/proxy" && ["GET", "PUT"].includes(method)) {
+    await services.permissionService.require(subject, "admin:manage");
+    const data = method === "GET" ? services.proxySettings.publicState() : services.proxySettings.save(await readJson(request));
+    return json(200, { data }, { "cache-control": "no-store" });
+  }
   if (method === "GET" && path === "/api/codex/accounts") return json(200, { data: await services.accounts.list(subject) });
   if (method === "POST" && path === "/api/codex/accounts/import") {
     const body = await readJson(request, 256 * 1024);
@@ -11,6 +16,12 @@ export async function routeCodex({ request, path, method, services }) {
   }
   if (method === "GET" && path === "/api/codex/pools") return json(200, { data: await services.pools.list(subject) });
   if (method === "POST" && path === "/api/codex/pools") return json(201, { data: await services.pools.save(subject, await readJson(request)) });
+  if (method === "POST" && path === "/api/codex/users") {
+    await services.permissionService.require(subject, "admin:manage");
+    const body = await readJson(request);
+    const user = await services.authService.createUser({ username: body?.username, password: body?.password, displayName: body?.displayName, role: body?.role, enabled: true });
+    return json(201, { data: user }, { "cache-control": "no-store" });
+  }
   if (method === "GET" && path === "/api/codex/users") { await services.permissionService.require(subject, "admin:manage"); return json(200, { data: services.authService.listUsers() }); }
   if (method === "GET" && path === "/api/codex/audit") { await services.permissionService.require(subject, "admin:manage"); return json(200, { data: await services.repository.listAudits({}) }); }
   if (method === "GET" && path === "/api/codex/credential-keys") { await services.permissionService.require(subject, "admin:manage"); return json(200, { data: await services.repository.listCredentialKeys() }); }
@@ -28,6 +39,21 @@ export async function routeCodex({ request, path, method, services }) {
   match = /^\/api\/codex\/accounts\/([^/]+)\/quota$/.exec(path);
   if (match && method === "GET") return json(200, { data: await services.quota.get(subject, decodeURIComponent(match[1])) });
   if (match && method === "POST") return json(200, { data: await services.quota.refresh(subject, decodeURIComponent(match[1])) });
+
+  match = /^\/api\/codex\/accounts\/([^/]+)\/credential-(maintenance|rotate|reconcile)$/.exec(path);
+  if (match) {
+    const id = decodeURIComponent(match[1]);
+    await services.accounts.get(subject, id, match[2] === "reconcile" ? "codex_account:reauth" : "codex_account:manage");
+    if (method === "GET" && match[2] === "maintenance") return json(200, { data: await services.renewal.state(id) }, { "cache-control": "no-store" });
+    if (method === "POST" && match[2] === "reconcile") {
+      const body = await readJson(request, 256 * 1024);
+      return json(200, { data: await services.renewal.reconcile(id, body.auth) }, { "cache-control": "no-store" });
+    }
+    if (method === "POST" && ["maintenance", "rotate"].includes(match[2])) {
+      await services.quota.refresh(subject, id, { maintenance: true, force: true, rotate: match[2] === "rotate" });
+      return json(200, { data: await services.renewal.state(id) }, { "cache-control": "no-store" });
+    }
+  }
 
   match = /^\/api\/codex\/accounts\/([^/]+)\/check-credential$/.exec(path);
   if (match && method === "POST") return json(200, { data: await services.credentials.inspect(subject, decodeURIComponent(match[1])) });

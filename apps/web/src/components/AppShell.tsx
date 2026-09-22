@@ -12,7 +12,7 @@ export function AppShell({ user, path, onNavigate, onLogout, children }: AppShel
   useEffect(() => { if (menuOpen) document.querySelector<HTMLElement>(".mobile-nav a")?.focus(); }, [menuOpen]);
   const navigation = (className: string) => (
     <nav aria-label="主导航" className={className}>
-      {routes.map((route) => (
+      {routes.filter((route) => user.role === "admin" || !["/authorization", "/audit"].includes(route.path)).map((route) => (
         <a key={route.path} href={route.path} className={path === route.path ? "nav-link active" : "nav-link"} onClick={(event) => { event.preventDefault(); onNavigate(route.path); setMenuOpen(false); }}>
           <Icon icon={route.icon} /><span>{route.label}</span>
         </a>
