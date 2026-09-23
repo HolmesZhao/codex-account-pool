@@ -55,7 +55,7 @@ export class CodexRuntime {
         }
         const response = await client.request("account/rateLimits/read", {});
         const value = response?.rateLimits || response || {};
-        quota = { primary: value.primary || null, secondary: value.secondary || null, credits: value.credits ?? null, planType: value.planType || account?.account?.planType || null, ordinaryUsageAllowed: response?.ordinaryUsageAllowed ?? null };
+        quota = { primary: value.primary || null, secondary: value.secondary || null, credits: value.credits ?? null, rateLimitResetCredits: response?.rateLimitResetCredits ?? response?.rate_limit_reset_credits ?? value.rateLimitResetCredits ?? value.rate_limit_reset_credits ?? null, planType: value.planType || account?.account?.planType || null, ordinaryUsageAllowed: response?.ordinaryUsageAllowed ?? null };
       } catch (reason) { error = { code: reason.code, message: safeDiagnostic(reason.message) }; }
       finally { await client.close(); }
       // Read back even after an upstream quota failure: an earlier RT rotation may have succeeded.
@@ -121,7 +121,7 @@ class JsonLineClient {
     child.on("exit", (code) => this.rejectAll(new Error(`codex app-server exited (${code ?? "signal"}): ${safeDiagnostic(this.stderr)}`)));
   }
   async initialize() {
-    await this.request("initialize", { clientInfo: { name: "codex-account-pool", title: "Codex Account Pool", version: "1.0.2" }, capabilities: {} });
+    await this.request("initialize", { clientInfo: { name: "codex-account-pool", title: "Codex Account Pool", version: "1.0.3" }, capabilities: {} });
     this.notify("initialized", {});
   }
   request(method, params) {

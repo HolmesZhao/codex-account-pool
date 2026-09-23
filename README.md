@@ -166,13 +166,16 @@ npm run self-test
 
 维护环境变量：`CODEX_POOL_MAINTENANCE_DISABLED=0`、`CODEX_POOL_INITIAL_DELAY_MS=30000`、`CODEX_POOL_REFRESH_INTERVAL_MS=3600000`、`CODEX_POOL_MAINTENANCE_CONCURRENCY=2`。**旧部署若仍设置 `CODEX_POOL_MAINTENANCE_DISABLED=1`，升级不会覆盖该设置，需改为 `0` 并重建/重启容器。** 保留原数据库卷和凭证根密钥。
 
-## 1.0.2 镜像与升级
+## 1.0.3 镜像与升级
 
 支持 `linux/amd64` 和 `linux/arm64`：
 
-- 阿里云：`registry.cn-hangzhou.aliyuncs.com/zwyhub/codex-account-pool:1.0.2`
-- Docker Hub：`holmeszhao/codex-account-pool:1.0.2`
+- 阿里云：`registry.cn-hangzhou.aliyuncs.com/zwyhub/codex-account-pool:1.0.3`
+- Docker Hub：`holmeszhao/codex-account-pool:1.0.3`
 
 此版本加入默认开启的自动维护、AAC 风格凭证轮换及客户端协调恢复。`latest` 同步指向此版本。
 
-群晖在镜像管理中下载 `1.0.2`，停止旧容器并使用新镜像重建容器，沿用原数据卷 `/data`、端口 `4317` 和原凭证根密钥。升级前备份数据卷及环境配置；数据库会自动补建维护表，无需创建新的数据库。若旧环境中 `CODEX_POOL_MAINTENANCE_DISABLED=1`，改为 `0`；未设置时默认开启。启动后可在账号详情查看自动续期状态。Helper 需在使用 Codex 的电脑上单独更新，拉取服务端镜像不会更新电脑上的 Helper。
+群晖在镜像管理中下载 `1.0.3`，停止旧容器并使用新镜像重建容器，沿用原数据卷 `/data`、端口 `4317` 和原凭证根密钥。升级前备份数据卷及环境配置；数据库会自动补建维护表，无需创建新的数据库。若旧环境中 `CODEX_POOL_MAINTENANCE_DISABLED=1`，改为 `0`；未设置时默认开启。启动后可在账号详情查看自动续期状态。Helper 需在使用 Codex 的电脑上单独更新，拉取服务端镜像不会更新电脑上的 Helper。
+
+
+1.0.3 在账号额度详情中展示重置卡可用总数，以及服务端返回的逐卡类型、状态和独立到期时间。若 `account/rateLimits/read` 只提供总数而未提供明细，页面会明确提示逐卡到期信息暂不可用；接口说明可见 [Codex app-server 协议](https://github.com/openai/codex/blob/main/codex-rs/app-server-protocol/schema/json/v2/GetAccountRateLimitsResponse.json)。普通 credits 余额与重置卡分开处理。

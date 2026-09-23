@@ -12,6 +12,8 @@ export function normalizeAccountUsageSnapshot(current, { previous = null, now = 
   return {
     fiveHour: normalizeWindow(fiveHour),
     weekly: normalizeWindow(weekly),
+    credits: normalizeCredits(current.credits),
+    rateLimitResetCredits: normalizeResetCredits(current.rateLimitResetCredits || current.rate_limit_reset_credits),
     planType: current.planType || null,
     collectedAt: current.collectedAt || now.toISOString(),
     observedAt: now.toISOString(),
@@ -40,6 +42,25 @@ function normalizeWindow(window) {
   return { usedPercent, remainingPercent: 100 - usedPercent, resetsAt: normalizeTimestamp(window.resetsAt || window.resets_at || null), windowDurationMins: Number(window.windowDurationMins ?? window.window_duration_mins ?? 0) || null };
 }
 
+function normalizeCredits(credits) {
+  if (credits == null) return null;
+  return typeof credits === "object" ? credits : { balance: credits };
+}
+
+function normalizeResetCredits(summary) {
+  if (!summary || typeof summary !== "object") return null;
+  const credits = summary.credits ?? null;
+  return {
+    availableCount: Number(summary.availableCount ?? summary.available_count ?? 0),
+    credits: Array.isArray(credits) ? credits.map((credit) => ({
+      ...credit,
+      resetType: credit.resetType ?? credit.reset_type ?? "unknown",
+      grantedAt: normalizeTimestamp(credit.grantedAt ?? credit.granted_at),
+      expiresAt: normalizeTimestamp(credit.expiresAt ?? credit.expires_at),
+    })) : null,
+  };
+}
+
 function classifyWindows(current) {
   const windows = [current.primary, current.secondary].filter(Boolean);
   const hasDurations = windows.some((window) => Number(window.windowDurationMins ?? window.window_duration_mins) > 0);
@@ -58,7 +79,7 @@ function normalizeTimestamp(value) {
 }
 
 function emptyUsage(now) {
-  return { fiveHour: null, weekly: null, planType: null, collectedAt: now.toISOString() };
+  return { fiveHour: null, weekly: null, credits: null, planType: null, collectedAt: now.toISOString() };
 }
 
 function isAuthenticationError(error) { return /\b(401|unauthori[sz]ed|invalid[_ -]?grant|token expired)\b/i.test(String(error || "")); }
