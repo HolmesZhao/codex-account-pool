@@ -189,7 +189,7 @@ npm run self-test
 群晖在镜像管理中下载 `1.0.3`，停止旧容器并使用新镜像重建容器，沿用原数据卷 `/data`、端口 `4317` 和原凭证根密钥。升级前备份数据卷及环境配置；数据库会自动补建维护表，无需创建新的数据库。若旧环境中 `CODEX_POOL_MAINTENANCE_DISABLED=1`，改为 `0`；未设置时默认开启。启动后可在账号详情查看自动续期状态。Helper 需在使用 Codex 的电脑上单独更新，拉取服务端镜像不会更新电脑上的 Helper。
 
 
-1.0.4 在账号额度详情中展示重置卡可用总数，以及服务端返回的逐卡类型、状态和独立到期时间。若 `account/rateLimits/read` 只提供总数而未提供明细，页面会明确提示逐卡到期信息暂不可用；接口说明可见 [Codex app-server 协议](https://github.com/openai/codex/blob/main/codex-rs/app-server-protocol/schema/json/v2/GetAccountRateLimitsResponse.json)。普通 credits 余额与重置卡分开处理。
+1.0.5 在账号额度详情中展示重置卡可用总数，以及服务端返回的逐卡类型、状态和独立到期时间。若 `account/rateLimits/read` 只提供总数而未提供明细，页面会明确提示逐卡到期信息暂不可用；接口说明可见 [Codex app-server 协议](https://github.com/openai/codex/blob/main/codex-rs/app-server-protocol/schema/json/v2/GetAccountRateLimitsResponse.json)。普通 credits 余额与重置卡分开处理。
 
 ## OpenAPI AT 与额度接口
 
@@ -206,4 +206,4 @@ curl -H "X-API-Key: $POOL_API_KEY" http://号池地址:4317/api/openapi/account
 额度查询失败时，`quota.stale=true`，仍可返回有效的 AT，客户端应查看 `quota.error` 和 `collectedAt` 判断额度是否为历史结果。Key 不存在、停用或撤销返回 401；账号停用、隔离、需要重新登录或 AT 有效期未知/过期时不下发 AT。客户端拿到 AT 后自行更新本机 Codex 凭证并重启 Codex；服务端不会操作本地电脑。
 
 
-1.0.4 增加网页管理的多 API Key，支持按账号绑定、启用、停用和撤销。
+1.0.5 增加网页管理的多 API Key，支持按账号绑定、启用、停用和撤销。

@@ -1,9 +1,11 @@
 {
   "name": "codex-account-pool",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "private": true,
   "type": "module",
-  "workspaces": ["apps/*"],
+  "workspaces": [
+    "apps/*"
+  ],
   "scripts": {
     "start": "npm run start --workspace @codex-pool/server",
     "dev": "npm run dev --workspace @codex-pool/web",
