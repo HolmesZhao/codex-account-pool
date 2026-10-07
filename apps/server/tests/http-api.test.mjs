@@ -13,6 +13,7 @@ async function fixture(t, options = {}) {
     credentialKey: Buffer.alloc(32, 5),
     admin: { username: "admin", password: "admin-pass-123" },
     maintenanceDisabled: true,
+    ...(options.config || {}),
     runtime: options.runtime || { async close() {}, async readQuota() { return { primary: { usedPercent: 12 }, secondary: { usedPercent: 20 } }; } },
   });
   await new Promise((resolve) => app.server.listen(0, "127.0.0.1", resolve));
@@ -20,6 +21,25 @@ async function fixture(t, options = {}) {
   t.after(async () => { await app.close(); await rm(directory, { recursive: true, force: true }); });
   return { app, url };
 }
+
+test("OpenAPI API key returns the fixed account AT and quota without a session", async (t) => {
+  const { url, app } = await fixture(t);
+  await app.services.repository.saveAccount({ id: "fixed-account", email: "fixed@example.com", alias: "", enabled: true, status: "ready", generation: 0, credentialMode: "legacy" });
+  const login = await fetch(`${url}/api/auth/login`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ username: "admin", password: "admin-pass-123" }) });
+  const cookie = login.headers.get("set-cookie").split(";")[0];
+  const imported = await fetch(`${url}/api/codex/accounts/import`, { method: "POST", headers: { cookie, "content-type": "application/json" }, body: JSON.stringify({ auth: { email: "fixed@example.com", expires_at: new Date(Date.now() + 3_600_000).toISOString(), tokens: { access_token: "fixed-at", refresh_token: "" } }, id: "fixed-account" }) });
+  assert.equal(imported.status, 201);
+  const created = await app.services.openApiSettings.create({ label: "local test", accountId: "fixed-account" });
+  const invalid = await fetch(`${url}/api/openapi/account`, { headers: { "x-api-key": "wrong" } });
+  assert.equal(invalid.status, 401);
+  const response = await fetch(`${url}/api/openapi/account`, { headers: { "x-api-key": created.apiKey } });
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("cache-control"), "no-store");
+  const body = (await response.json()).data;
+  assert.equal(body.accessToken, "fixed-at");
+  assert.equal(body.email, "fixed@example.com");
+  assert.equal(body.quota.fiveHour.usedPercent, 12);
+});
 
 test("unauthenticated account list returns request id and 401", async (t) => {
   const { url } = await fixture(t);

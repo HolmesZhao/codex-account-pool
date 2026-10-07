@@ -9,6 +9,18 @@ export async function routeCodex({ request, path, method, services }) {
     const data = method === "GET" ? services.proxySettings.publicState() : services.proxySettings.save(await readJson(request));
     return json(200, { data }, { "cache-control": "no-store" });
   }
+  if (path === "/api/codex/settings/openapi-keys" && ["GET", "POST"].includes(method)) {
+    await services.permissionService.require(subject, "admin:manage");
+    const data = method === "GET" ? services.openApiSettings.publicList() : await services.openApiSettings.create(await readJson(request));
+    return json(method === "GET" ? 200 : 201, { data }, { "cache-control": "no-store" });
+  }
+  const keyMatch = /^\/api\/codex\/settings\/openapi-keys\/([^/]+)$/.exec(path);
+  if (keyMatch && ["PUT", "DELETE"].includes(method)) {
+    await services.permissionService.require(subject, "admin:manage");
+    const id = decodeURIComponent(keyMatch[1]);
+    const data = method === "PUT" ? services.openApiSettings.update(id, await readJson(request)) : (services.openApiSettings.remove(id), { ok: true });
+    return json(200, { data }, { "cache-control": "no-store" });
+  }
   if (method === "GET" && path === "/api/codex/accounts") return json(200, { data: await services.accounts.list(subject) });
   if (method === "POST" && path === "/api/codex/accounts/import") {
     const body = await readJson(request, 256 * 1024);

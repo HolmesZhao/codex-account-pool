@@ -121,7 +121,7 @@ class JsonLineClient {
     child.on("exit", (code) => this.rejectAll(new Error(`codex app-server exited (${code ?? "signal"}): ${safeDiagnostic(this.stderr)}`)));
   }
   async initialize() {
-    await this.request("initialize", { clientInfo: { name: "codex-account-pool", title: "Codex Account Pool", version: "1.0.3" }, capabilities: {} });
+    await this.request("initialize", { clientInfo: { name: "codex-account-pool", title: "Codex Account Pool", version: "1.0.4" }, capabilities: {} });
     this.notify("initialized", {});
   }
   request(method, params) {

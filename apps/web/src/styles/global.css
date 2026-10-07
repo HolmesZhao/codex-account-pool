@@ -292,3 +292,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   .authorization-page .table-frame { overflow-x: auto; }
   .authorization-page .table-toolbar { flex-wrap: wrap; }
 }
+
+.openapi-key-list { display: grid; gap: 10px; margin-top: 16px; }
+.openapi-key-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 12px; border: 1px solid var(--color-border); border-radius: var(--radius-sm); }
+.openapi-key-row small { display: block; margin-top: 5px; overflow-wrap: anywhere; }

@@ -16,6 +16,7 @@ import { QuotaService } from "./domain/quota-service.mjs";
 import { LoginFlowService } from "./domain/login-flow-service.mjs";
 import { MaintenanceScheduler } from "./domain/maintenance-scheduler.mjs";
 import { ProxySettings } from "./domain/proxy-settings.mjs";
+import { OpenApiSettings } from "./domain/openapi-settings.mjs";
 import { CredentialRenewal } from "./domain/credential-renewal.mjs";
 import { CodexRuntime } from "./runtime/codex-runtime.mjs";
 import { routeRequest } from "./api/router.mjs";
@@ -37,10 +38,11 @@ export async function createCodexPoolServer(options = {}) {
   const permissionService = new PermissionService();
   const vault = options.vault || new CodexCredentialVault(config.credentialKey);
   const proxySettings = new ProxySettings({ repository: authRepository, vault });
+  const openApiSettings = new OpenApiSettings({ repository: authRepository, vault, accounts: repository });
   const runtime = options.runtime || new CodexRuntime({ command: config.codexCommand, getProxyEnvironment: () => proxySettings.environment() });
   const renewal = new CredentialRenewal({ repository, vault, runtime });
   const services = {
-    repository, authService, permissionService, runtime, proxySettings, renewal,
+    repository, authService, permissionService, runtime, proxySettings, openApiSettings, renewal,
     pools: new PoolService({ repository, permissionService }),
     accounts: new AccountService({ repository, permissionService, vault, renewal }),
     credentials: new CredentialService({ repository, permissionService, vault, renewal }),
@@ -53,7 +55,7 @@ export async function createCodexPoolServer(options = {}) {
     const id = requestId(request);
     try {
       if (!request.url.startsWith("/api/") && serveStatic(request, response, config.webDist || WEB_DIST)) return;
-      const result = await routeRequest({ request, services });
+      const result = await routeRequest({ request, services, config });
       response.writeHead(result.status, { "content-type": "application/json; charset=utf-8", "x-request-id": id, ...(result.headers || {}) });
       response.end(result.raw ? result.body : JSON.stringify({ ...result.body, requestId: id }));
     } catch (error) {

@@ -2,8 +2,9 @@ import { useEffect, useState } from "react";
 import { KeyRound, RefreshCw, Search, ShieldCheck } from "lucide-react";
 import { CreateUserPanel } from "./CreateUserPanel";
 import { ProxySettingsPanel } from "./ProxySettingsPanel";
+import { OpenApiSettingsPanel } from "./OpenApiSettingsPanel";
 import { api } from "../../lib/api";
-import type { Pool, User } from "../../lib/types";
+import type { Account, Pool, User } from "../../lib/types";
 
 const roleLabels: Record<string, string> = { basic_user: "普通用户", developer: "开发者", expert: "专家", admin: "管理员" };
 type CredentialKey = { version: number; active: boolean };
@@ -12,13 +13,14 @@ export function AuthorizationPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [pools, setPools] = useState<Pool[]>([]);
   const [keys, setKeys] = useState<CredentialKey[]>([]);
+  const [accounts, setAccounts] = useState<Account[]>([]);
   const [query, setQuery] = useState("");
   const [rotating, setRotating] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   useEffect(() => {
-    Promise.all([api.get<User[]>("/api/codex/users"), api.get<Pool[]>("/api/codex/pools"), api.get<CredentialKey[]>("/api/codex/credential-keys")])
-      .then(([nextUsers, nextPools, nextKeys]) => { setUsers(nextUsers); setPools(nextPools); setKeys(nextKeys); }).catch((e) => setError(e instanceof Error ? e.message : "加载失败"));
+    Promise.all([api.get<User[]>("/api/codex/users"), api.get<Pool[]>("/api/codex/pools"), api.get<CredentialKey[]>("/api/codex/credential-keys"), api.get<Account[]>("/api/codex/accounts")])
+      .then(([nextUsers, nextPools, nextKeys, nextAccounts]) => { setUsers(nextUsers); setPools(nextPools); setKeys(nextKeys); setAccounts(nextAccounts); }).catch((e) => setError(e instanceof Error ? e.message : "加载失败"));
   }, []);
   const visible = users.filter((user) => `${user.username} ${user.displayName}`.toLowerCase().includes(query.toLowerCase()));
   async function rotateKey() {
@@ -35,6 +37,7 @@ export function AuthorizationPage() {
     <div className="security-band"><div><KeyRound size={18} /><span><strong>凭证密钥</strong><small>{keys.find((key) => key.active) ? `当前版本 v${keys.find((key) => key.active)?.version}` : "正在读取密钥版本"}</small></span></div><button className="button" disabled={rotating} onClick={rotateKey}><RefreshCw size={15} />{rotating ? "正在轮换…" : "轮换密钥"}</button></div>
     {notice && <div className="notice" role="status">{notice}</div>}
     <ProxySettingsPanel />
+    <OpenApiSettingsPanel accounts={accounts} />
     {error && <div role="alert" className="form-error">{error}</div>}
     <CreateUserPanel onCreated={(user) => setUsers((current) => [...current, user].sort((a, b) => a.username.localeCompare(b.username)))} />
     <div className="table-toolbar"><label className="search-field"><Search size={16} /><input aria-label="搜索用户" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索用户名或姓名" /></label><span>{visible.length} 位用户</span></div>

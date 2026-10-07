@@ -40,6 +40,15 @@ export class CredentialService {
     return { valid: true, generation: revision.generation, mode: revision.mode, sha256: revision.sha256 };
   }
 
+  async currentAt(accountId) {
+    const revision = await this.repository.getRevision(accountId);
+    if (!revision) throw codexError("CODEX_CREDENTIAL_NOT_FOUND", "账号凭证不存在", 404);
+    const auth = this.vault.decrypt(JSON.parse(revision.encrypted), { accountId, generation: revision.generation, keyVersion: revision.keyVersion });
+    const metadata = authMetadata(auth);
+    if (!auth.tokens?.access_token || !metadata.tokenExpiresAt || Date.parse(metadata.tokenExpiresAt) <= this.now().getTime()) throw codexError("CODEX_ACCOUNT_REAUTH_REQUIRED", "当前 AT 已过期，请维护凭证或重新登录", 409);
+    return { accessToken: auth.tokens.access_token, tokenExpiresAt: metadata.tokenExpiresAt, generation: revision.generation, sha256: revision.sha256 };
+  }
+
   async rotateKey(subject) {
     await this.permissionService.require(subject, "admin:manage");
     const keys = await this.repository.listCredentialKeys();
