@@ -46,7 +46,7 @@ export class CredentialService {
     const auth = this.vault.decrypt(JSON.parse(revision.encrypted), { accountId, generation: revision.generation, keyVersion: revision.keyVersion });
     const metadata = authMetadata(auth);
     if (!auth.tokens?.access_token || !metadata.tokenExpiresAt || Date.parse(metadata.tokenExpiresAt) <= this.now().getTime()) throw codexError("CODEX_ACCOUNT_REAUTH_REQUIRED", "当前 AT 已过期，请维护凭证或重新登录", 409);
-    return { accessToken: auth.tokens.access_token, tokenExpiresAt: metadata.tokenExpiresAt, generation: revision.generation, sha256: revision.sha256 };
+    return { accessToken: auth.tokens.access_token, auth: toAtOnlyAuth(auth), tokenExpiresAt: metadata.tokenExpiresAt, generation: revision.generation, sha256: revision.sha256 };
   }
 
   async rotateKey(subject) {

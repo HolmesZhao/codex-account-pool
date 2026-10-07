@@ -29,6 +29,7 @@ test("OpenAPI API key returns the fixed account AT and quota without a session",
   const cookie = login.headers.get("set-cookie").split(";")[0];
   const imported = await fetch(`${url}/api/codex/accounts/import`, { method: "POST", headers: { cookie, "content-type": "application/json" }, body: JSON.stringify({ auth: { email: "fixed@example.com", expires_at: new Date(Date.now() + 3_600_000).toISOString(), tokens: { access_token: "fixed-at", refresh_token: "" } }, id: "fixed-account" }) });
   assert.equal(imported.status, 201);
+  await app.services.repository.saveQuotaSnapshot({ accountId: "fixed-account", payload: { fiveHour: { usedPercent: 12 }, weekly: { usedPercent: 20 }, collectedAt: new Date().toISOString(), stale: false } });
   const created = await app.services.openApiSettings.create({ label: "local test", accountId: "fixed-account" });
   const invalid = await fetch(`${url}/api/openapi/account`, { headers: { "x-api-key": "wrong" } });
   assert.equal(invalid.status, 401);

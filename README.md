@@ -124,6 +124,17 @@ pool-helper status                   # 查看当前托管状态，不输出凭�
 pool-helper coordinate               # 协调当前已托管账号
 pool-helper reconcile <account-id>    # 显式尝试同一账号的客户端协调
 pool-helper rollback                 # 恢复上次切换的 AT-only 备份
+./codex-pool-select.command  # 分别查询额度、选择账号并重启 Codex
+```
+
+独立 command 会对配置中的每个 OpenAPI Key 单独请求 `/api/openapi/account`，展示五小时和每周剩余额度，选择后把返回的 AT-only 凭证原子写入 `CODEX_HOME/auth.json`。`apiKeys` 支持任意数量，也可以使用 `CODEX_POOL_API_KEYS`（用换行或逗号分隔）提供多个 Key，避免把 Key 直接放进命令参数或历史记录；完整 Key 不会出现在输出中。
+
+command 默认会先关闭 macOS 上的 Codex，再重新打开 Codex。它只依赖 Python 3.8+ 标准库，不需要 Node/npm。第一次运行会输入地址和 API Key 数量，再逐个输入 Key，并保存到 `~/.config/codex-pool-select/config.json`（权限 `0600`）；之后双击不再重复输入。也可以提前写入该 JSON，格式为 `{ "serverUrl": "https://你的地址", "apiKeys": ["cpk_...", "cpk_...", "cpk_..."] }`。若只想写入凭证而暂不重启，可执行 `python3 codex-pool-select.py --no-restart`。`codex-pool-select.command` 和 `codex-pool-select.py` 不依赖 `codex-pool-helper`，可将两个文件一起复制到任意目录，双击 `.command` 即可。可通过 `CODEX_POOL_CODEX_APP` 覆盖应用名称，默认是 `Codex`。
+
+也可以先单独创建或覆盖配置，不执行额度请求和账号切换：
+
+```bash
+python3 codex-pool-select.py --configure
 ```
 
 切换或回滚成功后，重启正在运行的 Codex 客户端，使其重新读取凭证。
